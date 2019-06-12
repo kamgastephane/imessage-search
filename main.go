@@ -5,9 +5,10 @@ import (
 	"fmt"
 )
 
+const db string = "Users/stephane/Documents/chat.db"
 func main()  {
 
-	query := Search.Query{Db: "/Users/stephane/Documents/chat.db"}
+	query := Search.Query{Db: ""}
 	messages := query.Search("rate")
 	last := messages[0]
 	query.Enrich(&last)
