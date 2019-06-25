@@ -8,11 +8,12 @@ import (
 
 const MessageQuery string = "SELECT M.guid,M.text,M.date,M.is_from_me,H.id,H.person_centric_id as appleId,M.ROWID FROM MESSAGE AS M LEFT JOIN HANDLE AS H ON  M.handle_id = H.ROWID WHERE `TEXT` LIKE ?"
 const ChatQuery string = "SELECT CH.chat_id,H.ID,H.person_centric_id FROM chat_handle_join AS CH LEFT JOIN handle AS H ON CH.handle_id = H.ROWID LEFT JOIN chat_message_join AS CM ON CH.chat_id = CM.chat_id WHERE CM.message_id = ?"
-
+const ChatMessageQuery = "SELECT M.ROWID,M.guid,M.text,M.date,M.is_from_me FROM MESSAGE AS M JOIN chat_message_join AS CM ON CM.MESSAGE_ID = M.ROWID WHERE CM.CHAT_ID = ? AND M.DATE > ? AND M.DATE < ? ORDER BY date ASC"
 type Query struct {
 	Db string
 	searchStmt * sqlite3.Stmt
 	enrichStmt * sqlite3.Stmt
+	searchChatStmt * sqlite3.Stmt
 
 }
 
@@ -27,8 +28,56 @@ func (this*Query) open() (* sqlite3.Conn, bool){
 
 	return connection,false
 }
-func (this *Query)SearchChat(query string, radiusInSec int)  {
-	//to do
+func (this *Query)GetChatMessages(input* Message, radiusInSec int) ([]Message,bool)  {
+	enriched :=input.chat==nil
+	if !enriched {
+		enriched = this.Enrich(input)
+	}
+	if !enriched{
+		return nil,false
+	} else {
+		radiusInNs := int64(radiusInSec)*time.Second.Nanoseconds()
+		center := int64(input.dateInt)
+		connection, err := this.open()
+		if err{
+			return nil, false
+		}
+		defer connection.Close()
+		var stmtErr error
+		if this.searchChatStmt != nil{
+			this.searchChatStmt.Reset()
+			stmtErr = this.searchChatStmt.Bind(input.rowId, center-radiusInNs, center+radiusInNs)
+		} else{
+			this.searchChatStmt, stmtErr = connection.Prepare(ChatMessageQuery, input.rowId)
+		}
+		if stmtErr != nil{
+			fmt.Printf("Failed to prepare the query statement with error %s\n", stmtErr)
+			return nil, false
+		}
+		messages := make([]Message, 10, 10)
+		defer this.searchChatStmt.Close()
+		for{
+			hasRow, err := this.searchChatStmt.Step()
+			if err != nil{
+				fmt.Printf("Error while stepping through results with message %s\n", err)
+				return nil, false
+			}
+			if !hasRow{
+				// The query is finished
+				break
+			}
+			rowId := getInt(this.searchStmt, 0)
+			guid := getText(this.searchStmt, 1)
+			text := getText(this.searchStmt, 2)
+			date := getInt(this.searchStmt, 3)
+			fromMe := getInt(this.searchStmt, 4)
+
+			msg := NewMessage(rowId, guid, text, date, fromMe, input.to)
+			msg.chat = input.chat
+			messages = append(messages, msg)
+		}
+		return messages, true
+	}
 }
 
 func (this*Query) Enrich(message* Message) bool{

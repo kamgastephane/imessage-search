@@ -1,7 +1,7 @@
 package Search
 
 import (
-	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -44,9 +44,9 @@ type participant struct {
 	handles []string
 }
 
-func (m Message) ToString() string{
-	val,_ :=json.Marshal(m)
-	return string(val)
+func (m Message) String() string{
+	val := fmt.Sprintf("%s\t%s\n",m.txt,m.date.UTC().Format("2006-01-02 15:04"))
+	return val
 }
 
 
